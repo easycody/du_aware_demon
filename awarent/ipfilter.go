@@ -1,4 +1,4 @@
-package module
+package awarent
 
 import (
 	"net"
@@ -16,8 +16,8 @@ type FilterOptions struct {
 	BlockByDefault bool                `json:"blockedDefault"`
 }
 
-//IPFilter filter struct
-type IPFilter struct {
+//Filter filter struct
+type Filter struct {
 	opts           FilterOptions
 	mut            sync.RWMutex
 	defaultAllowed bool
@@ -29,9 +29,9 @@ type IPFilter struct {
 }
 
 //New new ipfilter
-func New(opts FilterOptions) *IPFilter {
+func New(opts FilterOptions) *Filter {
 
-	f := &IPFilter{
+	f := &Filter{
 		opts:           opts,
 		allowedIPs:     map[string]bool{},
 		blockedIPs:     map[string]bool{},
@@ -56,7 +56,7 @@ func New(opts FilterOptions) *IPFilter {
 }
 
 //allowIP  settting allow ip address
-func (f *IPFilter) allowIP(ip string) bool {
+func (f *Filter) allowIP(ip string) bool {
 	if ip := net.ParseIP(ip); ip != nil {
 		f.mut.Lock()
 		f.allowedIPs[ip.String()] = true
@@ -67,7 +67,7 @@ func (f *IPFilter) allowIP(ip string) bool {
 }
 
 //blockIP setting block ip address
-func (f *IPFilter) blockIP(ip string) bool {
+func (f *Filter) blockIP(ip string) bool {
 	if ip := net.ParseIP(ip); ip != nil {
 		f.mut.Lock()
 		f.blockedIPs[ip.String()] = true
@@ -78,7 +78,7 @@ func (f *IPFilter) blockIP(ip string) bool {
 }
 
 //authorizeIP settting service authorized ip address
-func (f *IPFilter) authorizeIP(ip string, identity string) bool {
+func (f *Filter) authorizeIP(ip string, identity string) bool {
 
 	if ip := net.ParseIP(ip); ip != nil && len(identity) > 0 {
 		f.mut.Lock()
@@ -96,7 +96,7 @@ func (f *IPFilter) authorizeIP(ip string, identity string) bool {
 	return false
 }
 
-func (f *IPFilter) Allowed(ip string) bool {
+func (f *Filter) Allowed(ip string) bool {
 	if ip == "" {
 		return f.defaultAllowed
 	}
@@ -122,7 +122,7 @@ func (f *IPFilter) Allowed(ip string) bool {
 // 	return false
 // }
 
-func (f *IPFilter) Authorized(ip string, param string) bool {
+func (f *Filter) Authorized(ip string, param string) bool {
 	if len(param) == 0 {
 		return false
 	}

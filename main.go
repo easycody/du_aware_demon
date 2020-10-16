@@ -1,8 +1,8 @@
 package main
 
 import (
+	"du_aware_demon/awarent"
 	"du_aware_demon/handlers"
-	"du_aware_demon/module"
 	"fmt"
 	"net/http"
 
@@ -24,9 +24,12 @@ var (
 
 func main() {
 	// flag.Parse()
-	module.InitAwarent(module.Awarent{
+	awarent.InitAwarent(awarent.Awarent{
 		ServiceName: "ddv",
-		Nacos:       "192.168.1.71:8848",
+		Nacos: awarent.Nacos{
+			Ip:   "192.168.1.71",
+			Port: 8848,
+		},
 	})
 	var rules []*flow.Rule
 	f1 := &flow.Rule{
@@ -48,16 +51,16 @@ func main() {
 	// 	for i := 0; i < 100; i++ {
 	// 		r := rand.Intn(5)
 	// 		time.Sleep(time.Duration(r) * time.Second)
-	// 		module.Metrics()
+	// 		awarent.Metrics()
 	// 	}
 
 	// }()
-	module.LoadRules(rules)
+	awarent.LoadRules(rules)
 	e := gin.New()
 	e.Use(gin.Recovery())
 
-	e.Use(module.AwarentSentinel("cid"))
-	e.GET("/awarent", module.AwarentMetrics())
+	e.Use(awarent.Sentinel("cid"))
+	e.GET("/awarent", awarent.Metrics())
 	e.GET("/q", handlers.GetDDV)
 	srv := &http.Server{
 		Addr:    "0.0.0.0:8080",
