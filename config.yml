@@ -3,12 +3,10 @@ app:
   port: 8080
   debug: true
 awarent:
-  serviceName: ddv
-  #group test/dev/prod
-  group: test
+  serviceName: DDV
+  group: DDV_TEST
   nacos:
     ip: 192.168.1.71
     port: 8848
-  config:
-    #config id
-    dataId: ddv-config
+  configId: DDV_CONFIG
+  ruleId: DDV_RULES

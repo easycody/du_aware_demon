@@ -8,12 +8,17 @@ import (
 //FilterOptions for IPFilter. Allow/Block setting
 type FilterOptions struct {
 	//explicity allowed IPs
-	AllowedIPs     []string            `json:"allowed"`
-	BlockedIPs     []string            `json:"blocked"`
-	URLPath        string              `json:"urlPath"`
-	URLParam       string              `json:"urlParam"`
-	AuthorizedIPs  map[string][]string `json:"authorized"`
-	BlockByDefault bool                `json:"blockedDefault"`
+	AllowedIPs     []string     `yaml:"allowed"`
+	BlockedIPs     []string     `yaml:"blocked"`
+	URLPath        string       `yaml:"urlPath"`
+	URLParam       string       `yaml:"urlParam"`
+	AuthorizedIPs  []Authorized `yaml:"authorized"`
+	BlockByDefault bool         `yaml:"blockedDefault"`
+}
+
+type Authorized struct {
+	Resource string   `yaml:"resource"`
+	IPS      []string `yaml:"ips"`
 }
 
 //Filter filter struct
@@ -46,9 +51,9 @@ func New(opts FilterOptions) *Filter {
 	for _, ip := range opts.BlockedIPs {
 		f.blockIP(ip)
 	}
-	for k, v := range opts.AuthorizedIPs {
-		for _, ip := range v {
-			f.authorizeIP(ip, k)
+	for _, authrozied := range opts.AuthorizedIPs {
+		for _, ip := range authrozied.IPS {
+			f.authorizeIP(ip, authrozied.Resource)
 		}
 
 	}
@@ -79,7 +84,6 @@ func (f *Filter) blockIP(ip string) bool {
 
 //authorizeIP settting service authorized ip address
 func (f *Filter) authorizeIP(ip string, identity string) bool {
-
 	if ip := net.ParseIP(ip); ip != nil && len(identity) > 0 {
 		f.mut.Lock()
 		val, ok := f.authorizedIPs[identity]
@@ -91,6 +95,7 @@ func (f *Filter) authorizeIP(ip string, identity string) bool {
 			val = append(val, ip.String())
 			f.authorizedIPs[identity] = val
 		}
+		f.mut.Unlock()
 		return true
 	}
 	return false

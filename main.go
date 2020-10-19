@@ -5,8 +5,10 @@ import (
 	"du_aware_demon/handlers"
 	"fmt"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 
-	"github.com/alibaba/sentinel-golang/core/flow"
 	"github.com/gin-gonic/gin"
 )
 
@@ -24,53 +26,44 @@ var (
 
 func main() {
 	// flag.Parse()
-	aw, err := awarent.InitAwarent(awarent.AwarentConfig{
+	aware, err := awarent.InitAwarent(awarent.AwarentConfig{
 		ServiceName: "ddv",
+		Port:        8080,
 		Nacos: awarent.Nacos{
 			Ip:   "192.168.1.71",
 			Port: 8848,
 		},
+		Group:  "DDV_TEST",
+		RuleID: "DDV_RULES",
 	})
 	if err != nil {
 		panic("init awarent client error")
 	}
-	var rules []*flow.Rule
-	f1 := &flow.Rule{
-		Resource:               "bigdata",
-		TokenCalculateStrategy: flow.Direct,
-		ControlBehavior:        flow.Reject,
-		Threshold:              10,
-		StatIntervalInMs:       1000,
-	}
-	f2 := &flow.Rule{
-		Resource:               "test",
-		TokenCalculateStrategy: flow.Direct,
-		ControlBehavior:        flow.Reject,
-		Threshold:              10,
-		StatIntervalInMs:       1000,
-	}
-	rules = append(rules, f1, f2)
-	// go func() {
-	// 	for i := 0; i < 100; i++ {
-	// 		r := rand.Intn(5)
-	// 		time.Sleep(time.Duration(r) * time.Second)
-	// 		awarent.Metrics()
-	// 	}
 
-	// }()
-	aw.LoadRules(rules)
-	// awarent.LoadRules(rules)
 	e := gin.New()
 	e.Use(gin.Recovery())
-
-	e.Use(aw.Sentinel("cid"))
-	e.GET("/awarent", aw.Metrics())
+	e.Use(aware.IPFilter())
+	e.Use(aware.Sentinel())
+	e.GET("/", func(c *gin.Context) {
+		c.String(200, "OK")
+	})
+	e.HEAD("/", func(c *gin.Context) {
+		c.AbortWithStatus(200)
+	})
+	e.GET("/awarent", aware.Metrics())
 	e.GET("/q", handlers.GetDDV)
 	srv := &http.Server{
 		Addr:    "0.0.0.0:8080",
 		Handler: e,
 	}
-	if err := srv.ListenAndServe(); err != nil {
-		fmt.Printf("start server error:%v\n", err)
-	}
+
+	go func() {
+		if err := srv.ListenAndServe(); err != nil {
+			fmt.Printf("start server error:%v\n", err)
+		}
+	}()
+	quit := make(chan os.Signal)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM, syscall.SIGKILL)
+	<-quit
+	aware.Deregister()
 }
