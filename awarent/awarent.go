@@ -2,11 +2,8 @@ package awarent
 
 import (
 	"bytes"
-	"errors"
 	"net/http"
 	"os"
-	"strconv"
-	"strings"
 	"time"
 
 	gadapter "github.com/alibaba/sentinel-golang/adapter/gin"
@@ -15,15 +12,18 @@ import (
 	"github.com/alibaba/sentinel-golang/core/flow"
 	metric "github.com/alibaba/sentinel-golang/core/log/metric"
 	"github.com/gin-gonic/gin"
+	"github.com/nacos-group/nacos-sdk-go/clients"
 	"github.com/nacos-group/nacos-sdk-go/clients/config_client"
 	"github.com/nacos-group/nacos-sdk-go/clients/naming_client"
 	"github.com/nacos-group/nacos-sdk-go/common/constant"
+	"github.com/nacos-group/nacos-sdk-go/util"
+	"github.com/nacos-group/nacos-sdk-go/vo"
 )
 
 type Awarenter interface {
-	Register(serviceName string)
-	DeRegister(serviceName string)
-	GetConfig() (string,error)
+	Register() (bool, error)
+	Deregister() (bool, error)
+	GetConfig() (string, error)
 	ConfigOnChange() func()
 	LoadRules(rules []*flow.Rule)
 }
@@ -31,27 +31,29 @@ type Awarenter interface {
 //Awarent entry struct
 type Awarent struct {
 	ServiceName string `yml:"serviceName" toml:"serviceName" json:"serviceName"`
-	Nacos       Nacos `yml:"nacos" toml:"nacos" json:"nacos"`
+	Port        uint64 `yml:"port" toml:"port" json:"port"`
+	Group       string `yml:"group" toml:"group" json:"group"`
+	Nacos       Nacos  `yml:"nacos" toml:"nacos" json:"nacos"`
 }
 
 type Nacos struct {
-	Ip string `yml:"ip" toml:"ip" json:"ip"`
+	Ip   string `yml:"ip" toml:"ip" json:"ip"`
 	Port uint64 `yml:"port" toml:"port" json:"port"`
 }
 
-type awarentConfig struct {
-	serviceName string
-	logDir      string
-	nacosIP       string
+type awarent struct {
+	serviceName  string
+	port         uint64
+	group        string
+	logDir       string
+	nacosIP      string
 	nacosPort    uint64
-	// sc          constant.ServerConfig //nacos server config
-	// cc          constant.ClientConfig //nacos client config
-	nameClient  naming_client.INamingClient
+	nameClient   naming_client.INamingClient
 	configClient config_client.IConfigClient
 }
 
 var (
-	curConfig awarentConfig
+	curConfig awarent
 )
 
 //InitAwarent init awarent module
@@ -59,16 +61,15 @@ func InitAwarent(entity Awarent) error {
 	confEntity := config.NewDefaultConfig()
 	confEntity.Sentinel.App.Name = entity.ServiceName
 	confEntity.Sentinel.Log.Dir = os.TempDir() + string(os.PathSeparator) + entity.ServiceName
-	
+
 	curConfig.logDir = confEntity.Sentinel.Log.Dir
+	curConfig.port = entity.Port
 	curConfig.serviceName = entity.ServiceName
 	curConfig.nacosIP = entity.Nacos.Ip
 	curConfig.nacosPort = entity.Nacos.Port
-	nacosAddrs := strings.Split(curConfig.nacos, ":")
-
 	sc := []constant.ServerConfig{
 		{
-			IpAddr: curConfig.nacosIP, //"192.168.1.71"
+			IpAddr: curConfig.nacosIP,   //"192.168.1.71"
 			Port:   curConfig.nacosPort, //8848
 		},
 	}
@@ -88,29 +89,44 @@ func InitAwarent(entity Awarent) error {
 	if err != nil {
 		return err
 	}
-	curConfig.nameClient = nameClient 
+	curConfig.nameClient = nameClient
 
 	configClient, err := clients.CreateConfigClient(map[string]interface{}{
 		"serverConfigs": sc,
 		"clientConfig":  cc,
 	})
 	if err != nil {
-		return err 
+		return err
 	}
 	curConfig.configClient = configClient
-	registerService(nameClient, param vo.RegisterInstanceParam)
+	// registerService(nameClient, param vo.RegisterInstanceParam)
 
-	
 	sentinel.InitWithConfig(confEntity)
 
+	return nil
+}
+
+func (a *awarent) Register() (bool, error) {
+	return a.nameClient.RegisterInstance(vo.RegisterInstanceParam{
+		Ip:        util.LocalIP(),
+		Port:      a.port,
+		Weight:    10,
+		Healthy:   true,
+		GroupName: a.group,
+	})
+}
+
+func (a *awarent) Deregister() (bool, error) {
+	return a.nameClient.DeregisterInstance(vo.DeregisterInstanceParam{
+		Ip:        util.LocalIP(),
+		Port:      a.port,
+		GroupName: a.group,
+	})
 }
 
 //LoadRules load flow control rules
 func LoadRules(rules []*flow.Rule) (bool, error) {
 	return flow.LoadRules(rules)
-}
-
-func Register() {
 }
 
 // Metrics wrappers the standard http.Handler to gin.HandlerFunc
