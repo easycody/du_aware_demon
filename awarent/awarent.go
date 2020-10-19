@@ -28,8 +28,8 @@ type Awarenter interface {
 	LoadRules(rules []*flow.Rule)
 }
 
-//Awarent entry struct
-type Awarent struct {
+//AwarentConfig entry struct
+type AwarentConfig struct {
 	ServiceName string `yml:"serviceName" toml:"serviceName" json:"serviceName"`
 	Port        uint64 `yml:"port" toml:"port" json:"port"`
 	Group       string `yml:"group" toml:"group" json:"group"`
@@ -41,7 +41,7 @@ type Nacos struct {
 	Port uint64 `yml:"port" toml:"port" json:"port"`
 }
 
-type awarent struct {
+type Awarent struct {
 	serviceName  string
 	port         uint64
 	group        string
@@ -52,32 +52,33 @@ type awarent struct {
 	configClient config_client.IConfigClient
 }
 
-var (
-	curConfig awarent
-)
-
 //InitAwarent init awarent module
-func InitAwarent(entity Awarent) error {
-	confEntity := config.NewDefaultConfig()
-	confEntity.Sentinel.App.Name = entity.ServiceName
-	confEntity.Sentinel.Log.Dir = os.TempDir() + string(os.PathSeparator) + entity.ServiceName
+func InitAwarent(entity AwarentConfig) (*Awarent, error) {
+	logDir := os.TempDir() + string(os.PathSeparator) + entity.ServiceName
 
-	curConfig.logDir = confEntity.Sentinel.Log.Dir
-	curConfig.port = entity.Port
-	curConfig.serviceName = entity.ServiceName
-	curConfig.nacosIP = entity.Nacos.Ip
-	curConfig.nacosPort = entity.Nacos.Port
+	awarent := &Awarent{
+		serviceName: entity.ServiceName,
+		group:       entity.Group,
+		port:        entity.Port,
+		logDir:      logDir,
+		nacosIP:     entity.Nacos.Ip,
+		nacosPort:   entity.Nacos.Port,
+	}
+
+	sentinelConfig := config.NewDefaultConfig()
+	sentinelConfig.Sentinel.App.Name = entity.ServiceName
+	sentinelConfig.Sentinel.Log.Dir = logDir
 	sc := []constant.ServerConfig{
 		{
-			IpAddr: curConfig.nacosIP,   //"192.168.1.71"
-			Port:   curConfig.nacosPort, //8848
+			IpAddr: awarent.nacosIP,   //"192.168.1.71"
+			Port:   awarent.nacosPort, //8848
 		},
 	}
 	cc := constant.ClientConfig{
 		TimeoutMs:           5000,
 		NotLoadCacheAtStart: true,
-		LogDir:              confEntity.Sentinel.Log.Dir,
-		CacheDir:            confEntity.Sentinel.Log.Dir,
+		LogDir:              sentinelConfig.Sentinel.Log.Dir,
+		CacheDir:            sentinelConfig.Sentinel.Log.Dir,
 		RotateTime:          "1h",
 		MaxAge:              3,
 		LogLevel:            "debug",
@@ -87,26 +88,24 @@ func InitAwarent(entity Awarent) error {
 		"clientConfig":  cc,
 	})
 	if err != nil {
-		return err
+		return nil, err
 	}
-	curConfig.nameClient = nameClient
+	awarent.nameClient = nameClient
 
 	configClient, err := clients.CreateConfigClient(map[string]interface{}{
 		"serverConfigs": sc,
 		"clientConfig":  cc,
 	})
 	if err != nil {
-		return err
+		return nil, err
 	}
-	curConfig.configClient = configClient
-	// registerService(nameClient, param vo.RegisterInstanceParam)
+	awarent.configClient = configClient
+	sentinel.InitWithConfig(sentinelConfig)
 
-	sentinel.InitWithConfig(confEntity)
-
-	return nil
+	return awarent, nil
 }
 
-func (a *awarent) Register() (bool, error) {
+func (a *Awarent) Register() (bool, error) {
 	return a.nameClient.RegisterInstance(vo.RegisterInstanceParam{
 		Ip:        util.LocalIP(),
 		Port:      a.port,
@@ -116,7 +115,7 @@ func (a *awarent) Register() (bool, error) {
 	})
 }
 
-func (a *awarent) Deregister() (bool, error) {
+func (a *Awarent) Deregister() (bool, error) {
 	return a.nameClient.DeregisterInstance(vo.DeregisterInstanceParam{
 		Ip:        util.LocalIP(),
 		Port:      a.port,
@@ -125,13 +124,13 @@ func (a *awarent) Deregister() (bool, error) {
 }
 
 //LoadRules load flow control rules
-func LoadRules(rules []*flow.Rule) (bool, error) {
+func (a *Awarent) LoadRules(rules []*flow.Rule) (bool, error) {
 	return flow.LoadRules(rules)
 }
 
 // Metrics wrappers the standard http.Handler to gin.HandlerFunc
-func Metrics() gin.HandlerFunc {
-	searcher, err := metric.NewDefaultMetricSearcher(curConfig.logDir, curConfig.serviceName)
+func (a *Awarent) Metrics() gin.HandlerFunc {
+	searcher, err := metric.NewDefaultMetricSearcher(a.logDir, a.serviceName)
 	if err != nil {
 		return func(c *gin.Context) {
 			c.AbortWithStatus(http.StatusInternalServerError)
@@ -160,7 +159,7 @@ func Metrics() gin.HandlerFunc {
 	}
 }
 
-func IPFilter(options FilterOptions) gin.HandlerFunc {
+func (a *Awarent) IPFilter(options FilterOptions) gin.HandlerFunc {
 	opts := options
 	ipfilter := New(opts)
 	return func(c *gin.Context) {
@@ -183,7 +182,7 @@ func IPFilter(options FilterOptions) gin.HandlerFunc {
 }
 
 //Sentinel awarent gin use middleware
-func Sentinel(param string) gin.HandlerFunc {
+func (a *Awarent) Sentinel(param string) gin.HandlerFunc {
 	return gadapter.SentinelMiddleware(
 		// customize resource extractor if required
 		// method_path by default

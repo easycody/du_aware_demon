@@ -24,13 +24,16 @@ var (
 
 func main() {
 	// flag.Parse()
-	awarent.InitAwarent(awarent.Awarent{
+	aw, err := awarent.InitAwarent(awarent.AwarentConfig{
 		ServiceName: "ddv",
 		Nacos: awarent.Nacos{
 			Ip:   "192.168.1.71",
 			Port: 8848,
 		},
 	})
+	if err != nil {
+		panic("init awarent client error")
+	}
 	var rules []*flow.Rule
 	f1 := &flow.Rule{
 		Resource:               "bigdata",
@@ -55,12 +58,13 @@ func main() {
 	// 	}
 
 	// }()
-	awarent.LoadRules(rules)
+	aw.LoadRules(rules)
+	// awarent.LoadRules(rules)
 	e := gin.New()
 	e.Use(gin.Recovery())
 
-	e.Use(awarent.Sentinel("cid"))
-	e.GET("/awarent", awarent.Metrics())
+	e.Use(aw.Sentinel("cid"))
+	e.GET("/awarent", aw.Metrics())
 	e.GET("/q", handlers.GetDDV)
 	srv := &http.Server{
 		Addr:    "0.0.0.0:8080",
