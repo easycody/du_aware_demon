@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	gadapter "github.com/alibaba/sentinel-golang/adapter/gin"
 	sentinel "github.com/alibaba/sentinel-golang/api"
 	"github.com/alibaba/sentinel-golang/core/config"
 	"github.com/alibaba/sentinel-golang/core/flow"
@@ -24,6 +23,7 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+// Awarenter interface of awarent
 type Awarenter interface {
 	Register() (bool, error)
 	Deregister() (bool, error)
@@ -31,8 +31,8 @@ type Awarenter interface {
 	ConfigOnChange(configID string) error
 }
 
-//AwarentConfig entry struct
-type AwarentConfig struct {
+//Config warentConfig entry struct
+type Config struct {
 	ServiceName string `yaml:"serviceName" toml:"serviceName" json:"serviceName"`
 	Port        uint64 `yaml:"port" toml:"port" json:"port"`
 	Group       string `yaml:"group" toml:"group" json:"group"`
@@ -41,11 +41,13 @@ type AwarentConfig struct {
 	RuleID      string `yaml:"ruleId" toml:"ruleId" json:"ruleId"`
 }
 
+// Nacos config
 type Nacos struct {
-	Ip   string `yaml:"ip" toml:"ip" json:"ip"`
+	IP   string `yaml:"ip" toml:"ip" json:"ip"`
 	Port uint64 `yaml:"port" toml:"port" json:"port"`
 }
 
+//Awarent struct of awarent
 type Awarent struct {
 	serviceName  string
 	port         uint64
@@ -72,7 +74,7 @@ type Rule struct {
 }
 
 //InitAwarent init awarent module
-func InitAwarent(entity AwarentConfig) (*Awarent, error) {
+func InitAwarent(entity Config) (*Awarent, error) {
 	logDir := os.TempDir() + string(os.PathSeparator) + entity.ServiceName
 
 	awarent := &Awarent{
@@ -80,7 +82,7 @@ func InitAwarent(entity AwarentConfig) (*Awarent, error) {
 		group:       entity.Group,
 		port:        entity.Port,
 		logDir:      logDir,
-		nacosIP:     entity.Nacos.Ip,
+		nacosIP:     entity.Nacos.IP,
 		nacosPort:   entity.Nacos.Port,
 		configID:    entity.ConfigID,
 		ruleID:      entity.RuleID,
@@ -157,6 +159,7 @@ func (a *Awarent) Register() (bool, error) {
 	return a.nameClient.RegisterInstance(regParam)
 }
 
+//Subscribe subscribe service change
 func (a *Awarent) Subscribe() error {
 	subCallback := func(services []model.SubscribeService, err error) {
 		if len(services) > 0 {
@@ -198,7 +201,7 @@ func (a *Awarent) GetConfig(configID string) (string, error) {
 	})
 }
 
-//ConfigOnChange listen on config change
+//ConfigOnChange listen on config change.
 func (a *Awarent) ConfigOnChange(configID string) error {
 	onChange := func(ns, group, dataId, data string) {
 		fmt.Printf("config:%s changed, content:%s\n", configID, data)
@@ -299,19 +302,23 @@ func (a *Awarent) IPFilter() gin.HandlerFunc {
 //Sentinel awarent gin use middleware
 func (a *Awarent) Sentinel() gin.HandlerFunc {
 	param := a.rule.ResourceParam
-	return gadapter.SentinelMiddleware(
+	endpoint := a.rule.IPFilterRules.URLPath
+	return SentinelMiddleware(
+		// speicify which url path working with sentinel
+		endpoint,
 		// customize resource extractor if required
 		// method_path by default
-		gadapter.WithResourceExtractor(func(ctx *gin.Context) string {
+		WithResourceExtractor(func(ctx *gin.Context) string {
 			return ctx.Query(param)
 		}),
 		// customize block fallback if required
 		// abort with status 429 by default
-		gadapter.WithBlockFallback(func(ctx *gin.Context) {
-			ctx.AbortWithStatusJSON(400, map[string]interface{}{
-				"err":  "too many request; the quota used up",
-				"code": 10222,
-			})
+		WithBlockFallback(func(ctx *gin.Context) {
+			ctx.AbortWithStatus(http.StatusTooManyRequests)
+			// ctx.AbortWithStatusJSON(http.StatusTooManyRequests, map[string]interface{}{
+			// 	"err":  "too many request; the quota used up",
+			// 	"code": 10222,
+			// })
 		}),
 	)
 }

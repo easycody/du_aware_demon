@@ -26,11 +26,11 @@ var (
 
 func main() {
 	// flag.Parse()
-	aware, err := awarent.InitAwarent(awarent.AwarentConfig{
+	aware, err := awarent.InitAwarent(awarent.Config{
 		ServiceName: "ddv",
 		Port:        8080,
 		Nacos: awarent.Nacos{
-			Ip:   "192.168.1.71",
+			IP:   "172.17.130.223",
 			Port: 8848,
 		},
 		Group:  "DDV_TEST",
@@ -50,7 +50,7 @@ func main() {
 	e.HEAD("/", func(c *gin.Context) {
 		c.AbortWithStatus(200)
 	})
-	e.GET("/awarent", aware.Metrics())
+	e.GET("/awarent", awarent.PromHandler)
 	e.GET("/q", handlers.GetDDV)
 	srv := &http.Server{
 		Addr:    "0.0.0.0:8080",
