@@ -1,4 +1,4 @@
-module du_aware_demon
+module github.com/easycody/du_aware_demon
 
 go 1.15
 
